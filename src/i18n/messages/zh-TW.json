@@ -284,6 +284,7 @@
     "updateReadyHint": "新版本已下載，重新啟動以完成更新。",
     "restarting": "正在重新啟動…",
     "dockerUpgradeHint": "現在升級的是正在執行的容器。容器一旦被重新建立即遺失——如需保留，請拉取或建置新版本映像後重新建立容器。",
+    "containerUpgradeBlockedHint": "此處已停用原地升級：容器一旦被重新建立即遺失——請改為拉取或建置新版本映像後重新建立容器。",
     "upgradeRolledBack": "升級失敗，伺服器已自動回復到上一版本。",
     "serverUnreachable": "無法連線到伺服器以開始升級。請確認伺服器正在執行後重試。",
     "rollbackButton": "復原",

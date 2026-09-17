@@ -138,6 +138,7 @@ export function SystemNetworkSettings() {
     liveProgress: serverLiveProgress,
     runtime: serverRuntime,
     rollbackAvailable: serverRollbackAvailable,
+    containerUpgradeBlocked,
     canInstallInPlace,
     checkNow,
     refreshLocalStatus,
@@ -598,7 +599,11 @@ export function SystemNetworkSettings() {
               serverSelfUpdate &&
               serverRuntime === "docker" && (
                 <p className="text-muted-foreground/80 text-2xs leading-5">
-                  {t("dockerUpgradeHint")}
+                  {t(
+                    containerUpgradeBlocked
+                      ? "containerUpgradeBlockedHint"
+                      : "dockerUpgradeHint"
+                  )}
                 </p>
               )}
 

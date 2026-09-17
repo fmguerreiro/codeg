@@ -52,6 +52,7 @@ function makeCtx(overrides: Partial<UpdateContextValue>): UpdateContextValue {
     liveProgress: false,
     runtime: undefined,
     rollbackAvailable: false,
+    containerUpgradeBlocked: false,
     canInstallInPlace: true,
     dismissedVersion: null,
     checkNow: vi.fn(async () => {}),

@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { render, screen, act, waitFor } from "@testing-library/react"
+import { render, screen, act, waitFor, fireEvent } from "@testing-library/react"
 import { NextIntlClientProvider } from "next-intl"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { AppUpdateState } from "@/lib/updater"
@@ -76,8 +76,19 @@ vi.mock("@/lib/transport", () => ({
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
+vi.mock("@/lib/platform", () => ({ openUrl: vi.fn() }))
+
+// The popover pulls the markdown stack in lazily; keep this suite off the ESM
+// markdown pipeline.
+vi.mock("@/components/settings/release-notes", () => ({
+  ReleaseNotes: ({ notes }: { notes: string }) => (
+    <div data-testid="notes">{notes}</div>
+  ),
+}))
+
 import { UpdateProvider, useAppUpdate } from "./update-provider"
 import enMessages from "@/i18n/messages/en.json"
+import { StatusBarUpdate } from "@/components/layout/status-bar-update"
 
 function Probe() {
   const u = useAppUpdate()
@@ -1081,5 +1092,71 @@ describe("UpdateProvider — cross-window dismissal", () => {
     // Still the old version, which no longer matches the offer — so the badge
     // is loud again (status-bar-update.tsx compares the two).
     expect(screen.getByTestId("dismissed").textContent).toBe("0.21.9")
+  })
+})
+
+// ─── Container upgrade gate ────────────────────────────────────────────────
+//
+// The real status bar under the real provider: what the user is offered comes
+// out of `canInstallInPlace`, so a mocked context would pin the fixture
+// instead of the gate.
+
+const dockerOffer = (containerUpgradeBlocked: boolean) => () => ({
+  currentVersion: "0.21.7",
+  update: { version: "0.21.9", body: "## Fixes", date: "2026-07-24" },
+  selfUpdateSupported: true,
+  liveProgress: true,
+  runtime: "docker",
+  rollbackAvailable: false,
+  containerUpgradeBlocked,
+})
+
+const gateTree = () => {
+  ctx = null
+  return (
+    <NextIntlClientProvider locale="en" messages={enMessages}>
+      <UpdateProvider>
+        <AvailabilityProbe />
+        <StatusBarUpdate />
+      </UpdateProvider>
+    </NextIntlClientProvider>
+  )
+}
+
+async function openOfferPopover() {
+  render(gateTree())
+  await waitFor(() => expect(ctx).not.toBeNull())
+  await act(async () => {
+    await ctx!.checkNow()
+  })
+  fireEvent.click(screen.getByRole("button", { name: /New v0\.21\.9/ }))
+}
+
+describe("UpdateProvider — container upgrade gate", () => {
+  it("offers the release page, not an upgrade, when the container would lose it", async () => {
+    checkResult = dockerOffer(true)
+    await openOfferPopover()
+
+    expect(
+      await screen.findByText(/Upgrading in place is disabled here/)
+    ).toBeVisible()
+    expect(
+      screen.getByRole("button", { name: /View v0\.21\.9 release/ })
+    ).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: /Upgrade to v0\.21\.9/ })
+    ).toBeNull()
+  })
+
+  it("still upgrades in a container once the operator has opted in", async () => {
+    checkResult = dockerOffer(false)
+    await openOfferPopover()
+
+    expect(
+      await screen.findByText(/This upgrades the running container now/)
+    ).toBeVisible()
+    expect(
+      screen.getByRole("button", { name: /Upgrade to v0\.21\.9/ })
+    ).toBeVisible()
   })
 })

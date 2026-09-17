@@ -135,6 +135,7 @@ export function StatusBarUpdate() {
     canInstallInPlace,
     runtime,
     selfUpdateSupported,
+    containerUpgradeBlocked,
     dismissAvailable,
     startUpdate,
     restart,
@@ -337,10 +338,14 @@ export function StatusBarUpdate() {
           </div>
         )}
 
-        {/* Docker upgrades only live as long as the container does. */}
+        {/* Docker upgrades vanish with the container, or are refused. */}
         {available && selfUpdateSupported && runtime === "docker" && (
           <p className="text-2xs leading-5 text-muted-foreground/80">
-            {t("dockerUpgradeHint")}
+            {t(
+              containerUpgradeBlocked
+                ? "containerUpgradeBlockedHint"
+                : "dockerUpgradeHint"
+            )}
           </p>
         )}
 

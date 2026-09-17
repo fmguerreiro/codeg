@@ -118,6 +118,9 @@ export interface UpdateContextValue {
   liveProgress: boolean
   runtime: string | undefined
   rollbackAvailable: boolean
+  /** An in-place apply would be refused: the swap would be lost the next time
+   * the container is recreated. */
+  containerUpgradeBlocked: boolean
   /** This client can actually drive an in-place install — desktop (Tauri
    * plugin) or a server speaking the live-progress protocol. When false the UI
    * offers a "view release" link instead. */
@@ -192,6 +195,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
   const [liveProgress, setLiveProgress] = useState(false)
   const [runtime, setRuntime] = useState<string | undefined>(undefined)
   const [rollbackAvailable, setRollbackAvailable] = useState(false)
+  const [containerUpgradeBlocked, setContainerUpgradeBlocked] = useState(false)
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null)
 
   // Completion time of the answer currently applied to state, as a watermark so
@@ -416,6 +420,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
         setLiveProgress(result.liveProgress ?? false)
         setRuntime(result.runtime)
         setRollbackAvailable(result.rollbackAvailable ?? false)
+        setContainerUpgradeBlocked(result.containerUpgradeBlocked ?? false)
         setCheckError(null)
 
         const now = Date.now()
@@ -531,6 +536,9 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
               setLiveProgress(status.liveProgress ?? false)
               setRuntime(status.runtime)
               setRollbackAvailable(status.rollbackAvailable)
+              setContainerUpgradeBlocked(
+                status.containerUpgradeBlocked ?? false
+              )
             }
           }
         } catch (err) {
@@ -872,9 +880,10 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
 
   // Desktop always drives the Tauri updater; a server only when it speaks the
   // detached live-progress protocol (older ones would block on the legacy
-  // endpoint), so anything else falls back to a "view release" link.
+  // endpoint) and is not a container that would throw the swap away.
   const canInstallInPlace =
-    usesTauriUpdater() || (selfUpdateSupported && liveProgress)
+    usesTauriUpdater() ||
+    (selfUpdateSupported && liveProgress && !containerUpgradeBlocked)
 
   const value = useMemo<UpdateContextValue>(
     () => ({
@@ -894,6 +903,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       liveProgress,
       runtime,
       rollbackAvailable,
+      containerUpgradeBlocked,
       canInstallInPlace,
       dismissedVersion,
       checkNow,
@@ -920,6 +930,7 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
       liveProgress,
       runtime,
       rollbackAvailable,
+      containerUpgradeBlocked,
       canInstallInPlace,
       dismissedVersion,
       checkNow,

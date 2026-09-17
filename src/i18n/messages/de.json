@@ -284,6 +284,7 @@
     "updateReadyHint": "Update heruntergeladen – zum Anwenden neu starten.",
     "restarting": "Neustart...",
     "dockerUpgradeHint": "Dies aktualisiert jetzt den laufenden Container. Beim Neuerstellen des Containers geht es verloren – zum Beibehalten ein Image mit der neuen Version ziehen oder bauen und den Container neu erstellen.",
+    "containerUpgradeBlockedHint": "Direktes Aktualisieren ist hier deaktiviert, weil es beim Neuerstellen des Containers verloren ginge – stattdessen ein Image mit der neuen Version ziehen oder bauen und den Container neu erstellen.",
     "upgradeRolledBack": "Upgrade fehlgeschlagen; der Server wurde auf die vorherige Version zurückgesetzt.",
     "serverUnreachable": "Der Server konnte für das Upgrade nicht erreicht werden. Prüfe, ob er läuft, und versuche es erneut.",
     "rollbackButton": "Zurücksetzen",

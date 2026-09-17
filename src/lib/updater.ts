@@ -45,6 +45,9 @@ export interface AppUpdateCheckResult {
   // (their `perform_app_update` blocks and returns the legacy shape), and falls
   // back to the "view release" affordance instead.
   liveProgress?: boolean
+  // Container without CODEG_ALLOW_CONTAINER_UPGRADE=1, so the in-place apply
+  // would be refused. Absent on older servers, which reads as "not blocked".
+  containerUpgradeBlocked?: boolean
 }
 
 // Local-only server self-update status, separate from {@link checkAppUpdate}
@@ -58,6 +61,7 @@ export interface ServerUpdateStatus {
   restartDelayMs: number
   rollbackAvailable: boolean
   liveProgress?: boolean
+  containerUpgradeBlocked?: boolean
 }
 
 // ─── Unified, backend-owned update lifecycle ───────────────────────────────
