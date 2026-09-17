@@ -120,6 +120,12 @@ kill_tree = { version = "0.2", features = ["tokio"] }
 which = "7"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"], optional = true }
 axum = { version = "0.8", features = ["ws", "multipart"] }
+# Optional HTTPS for `codeg-server` (CODEG_TLS_CERT / CODEG_TLS_KEY). Feature
+# set matches what sqlx already resolves rustls with, so nothing in the tree
+# rebuilds; `ring` keeps it that way too, since rustls' default provider
+# (aws-lc-rs) would add a C toolchain to the build.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 async_zip = { version = "0.0.18", features = ["tokio", "deflate"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "compression-gzip", "compression-br"] }
 # Direct deps (already in the graph via axum) so the compression predicate can

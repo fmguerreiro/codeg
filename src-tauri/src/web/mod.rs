@@ -6,6 +6,7 @@ pub mod port_probe;
 pub mod router;
 pub mod shutdown;
 pub mod socket_inherit;
+pub mod tls;
 pub mod ws;
 pub mod ws_attach;
 
@@ -30,6 +31,48 @@ const WEB_SERVICE_PORT_KEY: &str = "web_service_port";
 const WEB_SERVICE_AUTO_START_KEY: &str = "web_service_auto_start";
 pub const DEFAULT_WEB_SERVICE_PORT: u16 = 3080;
 
+/// Scheme clients must use to reach a bound listener.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UrlScheme {
+    Http,
+    Https,
+}
+
+impl UrlScheme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::Https => "https",
+        }
+    }
+
+    pub fn from_tls(tls_enabled: bool) -> Self {
+        if tls_enabled {
+            Self::Https
+        } else {
+            Self::Http
+        }
+    }
+}
+
+/// Loopback by default: a bearer token is the only guard, so a wildcard bind
+/// puts the whole network one leaked token away. Docker is the exception — a
+/// published port forwards to the container's bridge IP, which a
+/// loopback-bound listener never sees.
+pub fn resolve_bind_host(configured: Option<String>, in_docker: bool) -> String {
+    if let Some(host) = configured
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
+    {
+        return host;
+    }
+    if in_docker {
+        "0.0.0.0".to_string()
+    } else {
+        "127.0.0.1".to_string()
+    }
+}
+
 pub struct WebServerState {
     handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
     shutdown_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
@@ -45,6 +88,9 @@ pub struct WebServerState {
     /// Lets `get_web_server_status` advertise only reachable addresses: a
     /// specific bind makes the other interfaces' IPs unreachable.
     host: Mutex<String>,
+    /// Only the standalone binary sets this, so the status endpoint advertises
+    /// an origin browsers will accept.
+    https: std::sync::atomic::AtomicBool,
     running: std::sync::atomic::AtomicBool,
 }
 
@@ -63,6 +109,7 @@ impl WebServerState {
             port: AtomicU16::new(0),
             token: Mutex::new(String::new()),
             host: Mutex::new("0.0.0.0".to_string()),
+            https: std::sync::atomic::AtomicBool::new(false),
             running: std::sync::atomic::AtomicBool::new(false),
         }
     }
@@ -80,11 +127,23 @@ impl WebServerState {
     /// Note: handle/shutdown_tx are intentionally left `None` — the bin
     /// owns the serve task itself, not this state. `stop_web_server`
     /// uses that absence to detect web mode and reject the call.
-    pub fn mark_externally_running(&self, host: String, port: u16, token: String) {
+    pub fn mark_externally_running(
+        &self,
+        host: String,
+        port: u16,
+        token: String,
+        scheme: UrlScheme,
+    ) {
         self.port.store(port, Ordering::Relaxed);
         *self.token.lock().unwrap() = token;
         *self.host.lock().unwrap() = host;
+        self.https
+            .store(scheme == UrlScheme::Https, Ordering::Relaxed);
         self.running.store(true, Ordering::Release);
+    }
+
+    pub fn scheme(&self) -> UrlScheme {
+        UrlScheme::from_tls(self.https.load(Ordering::Relaxed))
     }
 
     /// True when the serve task is owned externally (e.g. by `codeg-server`
@@ -430,7 +489,7 @@ fn is_advertisable_ipv4(ip: std::net::Ipv4Addr) -> bool {
 /// the service binds to. If interface enumeration is unavailable we fall
 /// back to the default-route UDP probe so the result never regresses below
 /// the previous single-LAN-IP behavior.
-pub fn get_local_addresses(port: u16) -> Vec<String> {
+pub fn get_local_addresses(port: u16, scheme: UrlScheme) -> Vec<String> {
     use std::net::{IpAddr, Ipv4Addr};
 
     let mut lan: Vec<Ipv4Addr> = Vec::new();
@@ -463,8 +522,12 @@ pub fn get_local_addresses(port: u16) -> Vec<String> {
 
     lan.sort_unstable();
 
-    let mut addrs = vec![format!("http://127.0.0.1:{}", port)];
-    addrs.extend(lan.into_iter().map(|ip| format!("http://{}:{}", ip, port)));
+    let scheme = scheme.as_str();
+    let mut addrs = vec![format!("{}://127.0.0.1:{}", scheme, port)];
+    addrs.extend(
+        lan.into_iter()
+            .map(|ip| format!("{}://{}:{}", scheme, ip, port)),
+    );
     addrs
 }
 
@@ -495,7 +558,7 @@ pub fn advertise_host(local_addr: Option<std::net::SocketAddr>, configured_host:
 /// so advertise just that. A wildcard bind (`0.0.0.0` / `::`, or an
 /// unparseable value) serves every interface, so fall back to enumerating
 /// loopback + all local IPv4 via [`get_local_addresses`].
-pub fn addresses_for_bind(host: &str, port: u16) -> Vec<String> {
+pub fn addresses_for_bind(host: &str, port: u16, scheme: UrlScheme) -> Vec<String> {
     // Tolerate a bracketed IPv6 literal (`[::1]`): `IpAddr`'s parser rejects
     // brackets, but the configured-host fallback (when `local_addr()` was
     // unavailable) may still carry them.
@@ -508,10 +571,14 @@ pub fn addresses_for_bind(host: &str, port: u16) -> Vec<String> {
             // `SocketAddr`'s Display brackets IPv6 (`[::1]:port`) so the URL
             // is well-formed for both families; a bare `format!("{ip}:{port}")`
             // would emit the invalid `http://::1:port` for IPv6.
-            return vec![format!("http://{}", std::net::SocketAddr::new(ip, port))];
+            return vec![format!(
+                "{}://{}",
+                scheme.as_str(),
+                std::net::SocketAddr::new(ip, port)
+            )];
         }
     }
-    get_local_addresses(port)
+    get_local_addresses(port, scheme)
 }
 
 // ── Core logic (shared by Tauri commands and web handlers) ──
@@ -620,7 +687,7 @@ pub(crate) async fn do_start_web_server_with_state(
     // running already true from compare_exchange; disarm guard so it doesn't flip back.
     guard.disarm();
 
-    let addresses = addresses_for_bind(&advertised_host, actual_port);
+    let addresses = addresses_for_bind(&advertised_host, actual_port, UrlScheme::Http);
     Ok(WebServerInfo {
         port: actual_port,
         token,
@@ -673,7 +740,7 @@ pub(crate) fn do_get_web_server_status(state: &WebServerState) -> Option<WebServ
     let port = state.port.load(Ordering::Relaxed);
     let host = state.host.lock().unwrap().clone();
     let token = state.token.lock().unwrap().clone();
-    let addresses = addresses_for_bind(&host, port);
+    let addresses = addresses_for_bind(&host, port, state.scheme());
     Some(WebServerInfo {
         port,
         token,
@@ -895,7 +962,7 @@ pub(crate) async fn do_start_web_server_tauri(
     // running already true from compare_exchange; disarm guard so it doesn't flip back.
     guard.disarm();
 
-    let addresses = addresses_for_bind(&advertised_host, actual_port);
+    let addresses = addresses_for_bind(&advertised_host, actual_port, UrlScheme::Http);
     Ok(WebServerInfo {
         port: actual_port,
         token,
@@ -962,6 +1029,7 @@ pub async fn probe_web_service_port(
 mod local_address_tests {
     use super::{
         addresses_for_bind, advertise_host, get_local_addresses, is_advertisable_ipv4,
+        resolve_bind_host, UrlScheme,
     };
     use std::net::{Ipv4Addr, SocketAddr};
 
@@ -983,24 +1051,58 @@ mod local_address_tests {
         // A concrete bind address is the sole reachable URL — not loopback,
         // not the other interfaces.
         assert_eq!(
-            addresses_for_bind("127.0.0.1", 80),
+            addresses_for_bind("127.0.0.1", 80, UrlScheme::Http),
             vec!["http://127.0.0.1:80".to_string()]
         );
         assert_eq!(
-            addresses_for_bind("192.168.1.5", 8080),
+            addresses_for_bind("192.168.1.5", 8080, UrlScheme::Http),
             vec!["http://192.168.1.5:8080".to_string()]
         );
         // A specific IPv6 bind must be bracketed to form a valid URL.
         assert_eq!(
-            addresses_for_bind("::1", 3080),
+            addresses_for_bind("::1", 3080, UrlScheme::Http),
             vec!["http://[::1]:3080".to_string()]
         );
         // A wildcard bind advertises the full enumerated list (loopback first).
-        let wildcard = addresses_for_bind("0.0.0.0", 3080);
+        let wildcard = addresses_for_bind("0.0.0.0", 3080, UrlScheme::Http);
         assert_eq!(
             wildcard.first().map(String::as_str),
             Some("http://127.0.0.1:3080")
         );
+    }
+
+    #[test]
+    fn tls_makes_every_advertised_url_https() {
+        assert_eq!(
+            addresses_for_bind("192.168.1.5", 8443, UrlScheme::Https),
+            vec!["https://192.168.1.5:8443".to_string()]
+        );
+        assert_eq!(
+            addresses_for_bind("::1", 8443, UrlScheme::Https),
+            vec!["https://[::1]:8443".to_string()]
+        );
+        // The wildcard/enumerated path builds its URLs separately.
+        for addr in addresses_for_bind("0.0.0.0", 8443, UrlScheme::Https) {
+            assert!(addr.starts_with("https://"), "bad scheme: {addr}");
+        }
+    }
+
+    #[test]
+    fn bind_host_defaults_to_loopback_outside_docker() {
+        // A published container port only reaches a wildcard bind.
+        assert_eq!(resolve_bind_host(None, true), "0.0.0.0");
+        assert_eq!(resolve_bind_host(None, false), "127.0.0.1");
+        // An explicit CODEG_HOST wins in either runtime.
+        assert_eq!(
+            resolve_bind_host(Some("0.0.0.0".to_string()), false),
+            "0.0.0.0"
+        );
+        assert_eq!(
+            resolve_bind_host(Some(" 192.168.1.5 ".to_string()), true),
+            "192.168.1.5"
+        );
+        // An empty value is not a configured host.
+        assert_eq!(resolve_bind_host(Some("  ".to_string()), false), "127.0.0.1");
     }
 
     #[test]
@@ -1009,7 +1111,7 @@ mod local_address_tests {
         // result must still be the single, well-formed bracketed URL — never
         // a fall-through to the IPv4 enumeration.
         assert_eq!(
-            addresses_for_bind("[::1]", 3080),
+            addresses_for_bind("[::1]", 3080, UrlScheme::Http),
             vec!["http://[::1]:3080".to_string()]
         );
     }
@@ -1041,7 +1143,7 @@ mod local_address_tests {
             "localhost",
         );
         assert_eq!(
-            addresses_for_bind(&bound, 3080),
+            addresses_for_bind(&bound, 3080, UrlScheme::Http),
             vec!["http://127.0.0.1:3080".to_string()]
         );
         // Only when `local_addr()` is unavailable do we fall back to config.
@@ -1051,7 +1153,7 @@ mod local_address_tests {
     #[test]
     fn loopback_first_and_every_entry_is_a_well_formed_unique_url() {
         let port = 54321;
-        let addrs = get_local_addresses(port);
+        let addrs = get_local_addresses(port, UrlScheme::Http);
 
         // Loopback is always present and always first, so the UI has a safe
         // default selection even on a host with no LAN interfaces.

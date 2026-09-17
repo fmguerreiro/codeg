@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use codeg_lib::app_state::AppState;
 use codeg_lib::web::event_bridge::{EventEmitter, WebEventBroadcaster};
+use codeg_lib::web::tls::{server_config, tls_paths_from_env, TlsListener};
 use codeg_lib::web::{
-    addresses_for_bind, advertise_host, find_static_dir_standalone, resolve_persisted_server_token,
-    WebServerState,
+    addresses_for_bind, advertise_host, find_static_dir_standalone, resolve_bind_host,
+    resolve_persisted_server_token, UrlScheme, WebServerState,
 };
 
 fn main() -> ExitCode {
@@ -147,7 +148,21 @@ async fn async_main() -> ExitCode {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(3080);
-    let host = std::env::var("CODEG_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let configured_host = std::env::var("CODEG_HOST").ok();
+    let in_docker = codeg_lib::update::runtime::is_docker();
+    let host = resolve_bind_host(configured_host.clone(), in_docker);
+
+    // Before any I/O, so a bad certificate never reaches the database or a port.
+    let tls_config = match tls_paths_from_env()
+        .and_then(|paths| paths.map(|paths| server_config(&paths)).transpose())
+    {
+        Ok(config) => config,
+        Err(err) => {
+            tracing::error!("[SERVER][FATAL] {err}; aborting startup.");
+            return ExitCode::from(2);
+        }
+    };
+    let scheme = UrlScheme::from_tls(tls_config.is_some());
     // CODEG_DATA_DIR was already resolved and absolutized in `main()` so
     // all path resolvers across the process see the same root. Read it
     // back rather than re-deriving the default.
@@ -585,10 +600,13 @@ async fn async_main() -> ExitCode {
     // Publish runtime state so the settings page (served by us) shows
     // the truth — running on `actual_port` with this token — instead of
     // the placeholder "stopped" that triggers the stale-port banner.
-    state
-        .web_server_state
-        .mark_externally_running(advertised_host.clone(), actual_port, token.clone());
-    let addresses = addresses_for_bind(&advertised_host, actual_port);
+    state.web_server_state.mark_externally_running(
+        advertised_host.clone(),
+        actual_port,
+        token.clone(),
+        scheme,
+    );
+    let addresses = addresses_for_bind(&advertised_host, actual_port, scheme);
 
     // Token on stderr ONLY (bearer credential — keep it out of the log files
     // and the in-app viewer); the bind addresses are safe to log normally.
@@ -597,9 +615,31 @@ async fn async_main() -> ExitCode {
     for addr in &addresses {
         tracing::info!("  {}", addr);
     }
+    if tls_config.is_some() {
+        tracing::info!("[SERVER] TLS enabled via CODEG_TLS_CERT / CODEG_TLS_KEY.");
+    }
+    if configured_host.is_none() && !in_docker {
+        tracing::info!(
+            "[SERVER] Loopback-only bind: other machines cannot reach this server. \
+             Set CODEG_HOST=0.0.0.0 to listen on every interface."
+        );
+    }
 
     // Start serving
-    if let Err(e) = axum::serve(listener, router).await {
+    let serve_result = match tls_config {
+        Some(config) => {
+            let tls_listener = match TlsListener::new(listener, config) {
+                Ok(tls_listener) => tls_listener,
+                Err(e) => {
+                    tracing::error!("[SERVER] Failed to start the TLS listener: {}", e);
+                    return ExitCode::from(1);
+                }
+            };
+            axum::serve(tls_listener, router).await
+        }
+        None => axum::serve(listener, router).await,
+    };
+    if let Err(e) = serve_result {
         tracing::error!("[SERVER] Server error: {}", e);
         return ExitCode::from(1);
     }
