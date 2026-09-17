@@ -611,6 +611,23 @@ mod tests {
         .await;
     }
 
+    /// The predicate that gates destroying the plaintext copy, so it has to
+    /// discriminate rather than always answer yes.
+    #[cfg(not(feature = "tauri-runtime"))]
+    #[tokio::test]
+    async fn secrets_readable_follows_the_store() {
+        with_temp_secret_store(|_db| async move {
+            let headers = vec![header("CF-Access-Client-Id", "abc123")];
+            store_secrets(7, "tok", &headers).unwrap();
+            assert!(secrets_readable(7, "tok", &headers));
+            assert!(!secrets_readable(7, "different", &headers));
+
+            crate::keyring_store::delete_remote_workspace_secrets(7).unwrap();
+            assert!(!secrets_readable(7, "tok", &headers));
+        })
+        .await;
+    }
+
     /// Rows written before the `headers` column existed. `ADD COLUMN NOT NULL
     /// DEFAULT '[]'` has to backfill them — a NULL there fails to deserialize
     /// into `Model.headers: String` and takes the whole connection list down,
