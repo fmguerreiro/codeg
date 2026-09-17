@@ -4610,6 +4610,7 @@
     "name": "Name",
     "baseUrl": "Service URL",
     "token": "Access token",
+    "tokenPlaceholderKeep": "اتركه فارغاً للاحتفاظ بالقيمة الحالية",
     "customHeaders": "ترويسات مخصصة",
     "customHeaderName": "اسم الترويسة",
     "customHeaderValue": "قيمة الترويسة",

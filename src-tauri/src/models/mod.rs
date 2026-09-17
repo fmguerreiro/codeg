@@ -38,7 +38,8 @@ pub use message::{
 };
 pub use quick_message::QuickMessageInfo;
 pub use remote_workspace_connection::{
-    RemoteWorkspaceConnectionInfo, RemoteWorkspaceHeader, ToHeaderMap,
+    RemoteWorkspaceConnectionInfo, RemoteWorkspaceConnectionRecord, RemoteWorkspaceHeader,
+    ToHeaderMap,
 };
 pub use token_usage::{
     TokenUsageBreakdownItem, TokenUsageBucket, TokenUsageConversationItem, TokenUsageFacets,

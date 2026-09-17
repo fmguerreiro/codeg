@@ -4610,6 +4610,7 @@
     "name": "Name",
     "baseUrl": "Service URL",
     "token": "Access token",
+    "tokenPlaceholderKeep": "留空保持不變",
     "customHeaders": "自訂請求標頭",
     "customHeaderName": "標頭名稱",
     "customHeaderValue": "標頭值",

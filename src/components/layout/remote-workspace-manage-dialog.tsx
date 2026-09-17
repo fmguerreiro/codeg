@@ -254,7 +254,7 @@ export function RemoteWorkspaceManageDialog({
       id: selected.id,
       name: selected.name,
       baseUrl: selected.base_url,
-      token: selected.token,
+      token: "",
       headers: selected.headers ?? [],
     })
   }, [selected])
@@ -381,7 +381,7 @@ export function RemoteWorkspaceManageDialog({
         id: saved.id,
         name: saved.name,
         baseUrl: saved.base_url,
-        token: saved.token,
+        token: "",
         headers: saved.headers ?? [],
       })
       onChanged()
@@ -577,6 +577,11 @@ export function RemoteWorkspaceManageDialog({
                         id="remote-workspace-token"
                         type="password"
                         value={draft.token}
+                        placeholder={
+                          selected?.has_token
+                            ? t("tokenPlaceholderKeep")
+                            : undefined
+                        }
                         onChange={(event) =>
                           updateDraft({ token: event.target.value })
                         }

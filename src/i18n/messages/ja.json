@@ -4610,6 +4610,7 @@
     "name": "Name",
     "baseUrl": "Service URL",
     "token": "Access token",
+    "tokenPlaceholderKeep": "空欄で現在の値を維持",
     "customHeaders": "カスタムヘッダー",
     "customHeaderName": "ヘッダー名",
     "customHeaderValue": "ヘッダーの値",

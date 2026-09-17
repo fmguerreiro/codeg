@@ -4610,6 +4610,7 @@
     "name": "Name",
     "baseUrl": "Service URL",
     "token": "Access token",
+    "tokenPlaceholderKeep": "비워두면 현재 값 유지",
     "customHeaders": "사용자 지정 헤더",
     "customHeaderName": "헤더 이름",
     "customHeaderValue": "헤더 값",

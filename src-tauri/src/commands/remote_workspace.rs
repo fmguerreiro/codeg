@@ -90,9 +90,10 @@ async fn validate_remote_health(
 pub async fn list_remote_workspace_connections(
     db: tauri::State<'_, AppDatabase>,
 ) -> Result<Vec<RemoteWorkspaceConnectionInfo>, AppCommandError> {
-    remote_workspace_connection_service::list(&db.conn)
+    let records = remote_workspace_connection_service::list(&db.conn)
         .await
-        .map_err(AppCommandError::db)
+        .map_err(AppCommandError::db)?;
+    Ok(records.into_iter().map(|r| r.into_info()).collect())
 }
 
 #[cfg(feature = "tauri-runtime")]
@@ -104,6 +105,7 @@ pub async fn get_remote_workspace_connection(
     remote_workspace_connection_service::get(&db.conn, id)
         .await
         .map_err(AppCommandError::db)?
+        .map(|record| record.into_info())
         .ok_or_else(|| AppCommandError::not_found(format!("Remote connection {id} not found")))
 }
 
@@ -122,14 +124,15 @@ pub async fn create_remote_workspace_connection(
     input: RemoteWorkspaceConnectionInput,
 ) -> Result<RemoteWorkspaceConnectionInfo, AppCommandError> {
     validate_remote_health(&input.base_url, &input.token, &input.headers).await?;
-    remote_workspace_connection_service::create(
+    let record = remote_workspace_connection_service::create(
         &db.conn,
         &input.name,
         &input.base_url,
         &input.token,
         &input.headers,
     )
-    .await
+    .await?;
+    Ok(record.into_info())
 }
 
 #[cfg(feature = "tauri-runtime")]
@@ -139,16 +142,30 @@ pub async fn update_remote_workspace_connection(
     id: i32,
     input: RemoteWorkspaceConnectionInput,
 ) -> Result<RemoteWorkspaceConnectionInfo, AppCommandError> {
-    validate_remote_health(&input.base_url, &input.token, &input.headers).await?;
-    remote_workspace_connection_service::update(
+    // The dialog never gets the stored token back, so blank means keep it.
+    let token = if input.token.trim().is_empty() {
+        remote_workspace_connection_service::get(&db.conn, id)
+            .await
+            .map_err(AppCommandError::db)?
+            .ok_or_else(|| {
+                AppCommandError::not_found(format!("Remote connection {id} not found"))
+            })?
+            .token
+    } else {
+        input.token.clone()
+    };
+    let token = remote_workspace_connection_service::validate_token(&token)?;
+    validate_remote_health(&input.base_url, &token, &input.headers).await?;
+    let record = remote_workspace_connection_service::update(
         &db.conn,
         id,
         &input.name,
         &input.base_url,
-        &input.token,
+        &token,
         &input.headers,
     )
-    .await
+    .await?;
+    Ok(record.into_info())
 }
 
 #[cfg(feature = "tauri-runtime")]

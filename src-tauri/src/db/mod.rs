@@ -108,6 +108,17 @@ pub async fn init_database(
         Err(e) => tracing::warn!("[folder-link] failed to hydrate workspace links: {e}"),
     }
 
+    // Idempotent: finds nothing to do on every start after the first.
+    match service::remote_workspace_connection_service::migrate_plaintext_secrets(&conn).await {
+        Ok(moved) if moved > 0 => {
+            tracing::info!(
+                "[remote-workspace] moved secrets for {moved} connection(s) to the keyring"
+            );
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!("[remote-workspace] secret migration failed: {e}"),
+    }
+
     Ok(AppDatabase { conn })
 }
 

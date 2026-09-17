@@ -4622,6 +4622,7 @@
     "name": "名称",
     "baseUrl": "服务地址",
     "token": "访问 Token",
+    "tokenPlaceholderKeep": "留空保持不变",
     "customHeaders": "自定义请求头",
     "customHeaderName": "请求头名称",
     "customHeaderValue": "请求头值",
