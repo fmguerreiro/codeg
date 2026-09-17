@@ -193,7 +193,7 @@ $env:CODEG_STATIC_DIR="$env:LOCALAPPDATA\codeg\web"; codeg-server
 
 ```bash
 sudo useradd --system --user-group --create-home --shell /usr/sbin/nologin codeg
-base=https://raw.githubusercontent.com/fmguerreiro/codeg/main/packaging/systemd
+base=https://raw.githubusercontent.com/xintaofei/codeg/main/packaging/systemd
 sudo curl -fsSL "$base/codeg-server.env.example" --create-dirs -o /etc/codeg/codeg-server.env
 sudo chmod 600 /etc/codeg/codeg-server.env
 sudoedit /etc/codeg/codeg-server.env               # token, host, port
