@@ -1,0 +1,35 @@
+[Unit]
+Description=Codeg server
+Documentation=https://docs.codeg.app/getting-started/deployment
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=codeg
+Group=codeg
+EnvironmentFile=/etc/codeg/codeg-server.env
+ExecStart=/usr/local/bin/codeg-server
+StateDirectory=codeg
+
+# systemd is the supervisor, hence no --supervise. An upgrade re-execs this
+# PID; exit 86 is its fallback and must relaunch, not end the unit.
+Restart=always
+RestartSec=2
+RestartForceExitStatus=86
+# Exit 2 is a rejected config; restarting cannot fix it.
+RestartPreventExitStatus=2
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+# No ProtectSystem=/ProtectHome=: agents run git and Node/Python toolchains
+# under this user's home, and self-update rewrites /usr/local/bin. Adding
+# either needs ReadWritePaths= for the project roots, or agents hit read-only
+# filesystem errors much later.
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

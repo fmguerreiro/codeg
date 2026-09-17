@@ -189,6 +189,20 @@ irm https://raw.githubusercontent.com/xintaofei/codeg/main/install.ps1 | iex
 $env:CODEG_STATIC_DIR="$env:LOCALAPPDATA\codeg\web"; codeg-server
 ```
 
+**systemd** — survive reboots on Linux, after `install.sh` has placed the binary:
+
+```bash
+sudo useradd --system --user-group --create-home --shell /usr/sbin/nologin codeg
+base=https://raw.githubusercontent.com/xintaofei/codeg/main/packaging/systemd
+sudo curl -fsSL "$base/codeg-server.env.example" --create-dirs -o /etc/codeg/codeg-server.env
+sudo chmod 600 /etc/codeg/codeg-server.env   # then edit it: token, host, port
+sudo curl -fsSL "$base/codeg-server.service" -o /etc/systemd/system/codeg-server.service
+sudo systemctl enable --now codeg-server
+journalctl -u codeg-server -f
+```
+
+The service user needs a home directory — agents write toolchain caches and CLI config there. systemd is the supervisor, so the unit does not pass `--supervise`; the two are alternatives, not a stack. In-place updates still work: the server re-execs itself, and the unit restarts it on exit code `86` for the case where that re-exec fails.
+
 **Docker** — the same server, in one container:
 
 ```bash
