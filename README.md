@@ -189,14 +189,13 @@ irm https://raw.githubusercontent.com/xintaofei/codeg/main/install.ps1 | iex
 $env:CODEG_STATIC_DIR="$env:LOCALAPPDATA\codeg\web"; codeg-server
 ```
 
-**systemd** — survive reboots on Linux, after `install.sh` has placed the binary:
+**systemd** — survive reboots on Linux. Run from a checkout, after `install.sh` has placed the binary:
 
 ```bash
 sudo useradd --system --user-group --create-home --shell /usr/sbin/nologin codeg
-base=https://raw.githubusercontent.com/xintaofei/codeg/main/packaging/systemd
-sudo curl -fsSL "$base/codeg-server.env.example" --create-dirs -o /etc/codeg/codeg-server.env
-sudo chmod 600 /etc/codeg/codeg-server.env   # then edit it: token, host, port
-sudo curl -fsSL "$base/codeg-server.service" -o /etc/systemd/system/codeg-server.service
+sudo install -D -m600 packaging/systemd/codeg-server.env.example /etc/codeg/codeg-server.env
+sudo $EDITOR /etc/codeg/codeg-server.env            # token, host, port
+sudo install -m644 packaging/systemd/codeg-server.service /etc/systemd/system/
 sudo systemctl enable --now codeg-server
 journalctl -u codeg-server -f
 ```
