@@ -74,6 +74,14 @@ fn store_secrets(
     crate::keyring_store::set_remote_workspace_headers(connection_id, headers)
 }
 
+/// Confirm the store can hand back what it was just given, so a write that
+/// reports success without persisting cannot cost the caller its only copy.
+fn secrets_readable(connection_id: i32, token: &str, headers: &[RemoteWorkspaceHeader]) -> bool {
+    crate::keyring_store::get_remote_workspace_token(connection_id).as_deref() == Some(token)
+        && crate::keyring_store::get_remote_workspace_headers(connection_id).as_deref()
+            == Some(headers)
+}
+
 pub fn validate_headers(
     headers: &[RemoteWorkspaceHeader],
 ) -> Result<Vec<RemoteWorkspaceHeader>, AppCommandError> {
@@ -256,8 +264,8 @@ pub async fn delete(conn: &DatabaseConnection, id: i32) -> Result<(), DbError> {
 }
 
 /// Move plaintext `token` / `headers` columns into `keyring_store`, then clear
-/// them. A row whose store write fails keeps its plaintext for the next run,
-/// rather than losing the user's credentials.
+/// them. A row whose secrets do not read back out of the store keeps its
+/// plaintext for the next run, rather than losing the user's credentials.
 pub async fn migrate_plaintext_secrets(conn: &DatabaseConnection) -> Result<usize, DbError> {
     let rows = remote_workspace_connection::Entity::find().all(conn).await?;
     let mut moved = 0;
@@ -270,6 +278,12 @@ pub async fn migrate_plaintext_secrets(conn: &DatabaseConnection) -> Result<usiz
             serde_json::from_str(&row.headers).unwrap_or_default();
         if let Err(e) = store_secrets(id, &row.token, &headers) {
             tracing::warn!("[remote-workspace] connection {id} secrets not migrated: {e}");
+            continue;
+        }
+        if !secrets_readable(id, &row.token, &headers) {
+            tracing::warn!(
+                "[remote-workspace] connection {id} secrets did not read back; keeping plaintext"
+            );
             continue;
         }
         let mut active = row.into_active_model();
