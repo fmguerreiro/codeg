@@ -517,3 +517,57 @@ async fn deepseek_model_catalog_requires_a_token() {
         .await;
     assert_eq!(resp.status_code(), 401);
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Expert skills for one agent
+//
+// Which experts come back depends on the host's real skill directories, so the
+// wire keys are pinned on the bundled catalog too — it is never empty.
+// ────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn experts_for_an_agent_are_a_shaped_subset_of_the_catalog() {
+    let (server, _data, _static) = build_test_server().await;
+    let resp = server
+        .post("/api/experts_list_for_agent")
+        .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
+        .json(&json!({ "agentType": "claude_code" }))
+        .await;
+    assert_eq!(resp.status_code(), 200);
+    let linked: Vec<Value> = resp.json();
+
+    let catalog: Vec<Value> = server
+        .post("/api/experts_list")
+        .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
+        .json(&json!({}))
+        .await
+        .json();
+    assert!(!catalog.is_empty(), "the bundled catalog is never empty");
+
+    for item in linked.iter().chain(catalog.iter()) {
+        let meta = &item["metadata"];
+        assert!(meta["id"].is_string(), "got {item}");
+        assert!(meta["sort_order"].is_i64(), "got {item}");
+        assert!(meta["display_name"].is_object(), "got {item}");
+        assert!(meta["description"].is_object(), "got {item}");
+    }
+
+    let ids: Vec<&str> = catalog
+        .iter()
+        .map(|item| item["metadata"]["id"].as_str().expect("id"))
+        .collect();
+    for item in &linked {
+        let id = item["metadata"]["id"].as_str().expect("id");
+        assert!(ids.contains(&id), "{id} is not a bundled expert");
+    }
+}
+
+#[tokio::test]
+async fn experts_for_an_agent_require_a_token() {
+    let (server, _data, _static) = build_test_server().await;
+    let resp = server
+        .post("/api/experts_list_for_agent")
+        .json(&json!({ "agentType": "claude_code" }))
+        .await;
+    assert_eq!(resp.status_code(), 401);
+}
