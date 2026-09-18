@@ -1710,6 +1710,7 @@ mod tauri_app {
                 acp_commands::codex_request_device_code,
                 acp_commands::codex_poll_device_code,
                 experts_commands::experts_list,
+                experts_commands::experts_list_for_agent,
                 experts_commands::experts_get_install_status,
                 experts_commands::experts_list_all_install_statuses,
                 experts_commands::experts_link_to_agent,

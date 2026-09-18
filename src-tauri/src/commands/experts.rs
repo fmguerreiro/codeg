@@ -789,6 +789,27 @@ pub async fn experts_get_install_status(
     Ok(out)
 }
 
+/// Built-in experts currently linked into `agent_type`'s skill dir.
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn experts_list_for_agent(
+    agent_type: AgentType,
+) -> Result<Vec<ExpertListItem>, ExpertsError> {
+    let all = experts_list().await?;
+    let mut out = Vec::with_capacity(all.len());
+    for item in all {
+        let link_path = match agent_link_path(agent_type, &item.metadata.id) {
+            Ok(p) => p,
+            // An agent codeg's skill store cannot manage has nothing linked.
+            Err(_) => return Ok(Vec::new()),
+        };
+        let expected = expert_central_path(&item.metadata.id);
+        if classify_link(&link_path, &expected) == ExpertLinkState::LinkedToCodeg {
+            out.push(item);
+        }
+    }
+    Ok(out)
+}
+
 fn supported_agents() -> Vec<AgentType> {
     const ALL: &[AgentType] = &[
         AgentType::ClaudeCode,
@@ -1177,5 +1198,33 @@ mod tests {
             .expect("snapshot returns Ok");
         let expected = bundled_metadata().len() * supported_agents().len();
         assert_eq!(rows.len(), expected);
+    }
+
+    #[tokio::test]
+    async fn for_agent_lists_exactly_the_experts_linked_to_that_agent() {
+        let agent = AgentType::ClaudeCode;
+        let listed: Vec<String> = experts_list_for_agent(agent)
+            .await
+            .expect("list returns Ok")
+            .into_iter()
+            .map(|item| item.metadata.id)
+            .collect();
+        let linked: Vec<String> = experts_list_all_install_statuses()
+            .await
+            .expect("snapshot returns Ok")
+            .into_iter()
+            .filter(|s| s.agent_type == agent && s.state == ExpertLinkState::LinkedToCodeg)
+            .map(|s| s.expert_id)
+            .collect();
+        assert_eq!(listed, linked);
+    }
+
+    #[tokio::test]
+    async fn for_agent_yields_an_empty_list_for_an_unmanaged_agent() {
+        let agent = AgentType::custom("zzz-codeg-unmanaged-skills-agent").unwrap();
+        assert!(experts_list_for_agent(agent)
+            .await
+            .expect("an unmanaged agent is an empty menu, not an error")
+            .is_empty());
     }
 }

@@ -1008,6 +1008,10 @@ pub fn build_router(
         // ─── Experts ───
         .route("/experts_list", post(handlers::experts::experts_list))
         .route(
+            "/experts_list_for_agent",
+            post(handlers::experts::experts_list_for_agent),
+        )
+        .route(
             "/experts_get_install_status",
             post(handlers::experts::experts_get_install_status),
         )
