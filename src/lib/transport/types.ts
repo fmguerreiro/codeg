@@ -2,11 +2,11 @@ import type { EventEnvelope, LiveSessionSnapshot } from "@/lib/types"
 
 export type UnsubscribeFn = () => void
 
+/** No token: every remote call is proxied by the backend, by connection id. */
 export interface RemoteTransportConfig {
   id: number
   name: string
   baseUrl: string
-  token: string
   windowInstanceId: string
   onUnauthorized?: () => void
 }

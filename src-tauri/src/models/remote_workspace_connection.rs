@@ -35,12 +35,43 @@ impl ToHeaderMap for [RemoteWorkspaceHeader] {
     }
 }
 
+/// A connection plus its `keyring_store` secrets; not `Serialize`, so no
+/// command can hand the token to a webview.
+#[derive(Debug, Clone)]
+pub struct RemoteWorkspaceConnectionRecord {
+    pub id: i32,
+    pub name: String,
+    pub base_url: String,
+    pub token: String,
+    pub headers: Vec<RemoteWorkspaceHeader>,
+    pub sort_order: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl RemoteWorkspaceConnectionRecord {
+    pub fn into_info(self) -> RemoteWorkspaceConnectionInfo {
+        RemoteWorkspaceConnectionInfo {
+            id: self.id,
+            name: self.name,
+            base_url: self.base_url,
+            has_token: !self.token.is_empty(),
+            headers: self.headers,
+            sort_order: self.sort_order,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
+}
+
+/// What the frontend sees: token presence only, since every remote request is
+/// proxied by connection id.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteWorkspaceConnectionInfo {
     pub id: i32,
     pub name: String,
     pub base_url: String,
-    pub token: String,
+    pub has_token: bool,
     #[serde(default)]
     pub headers: Vec<RemoteWorkspaceHeader>,
     pub sort_order: i32,

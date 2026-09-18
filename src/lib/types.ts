@@ -81,7 +81,7 @@ export interface RemoteWorkspaceConnection {
   id: number
   name: string
   base_url: string
-  token: string
+  has_token: boolean
   headers: RemoteWorkspaceHeader[]
   sort_order: number
   created_at: string
@@ -91,6 +91,7 @@ export interface RemoteWorkspaceConnection {
 export interface RemoteWorkspaceConnectionInput {
   name: string
   baseUrl: string
+  /** Blank on update keeps the stored token. */
   token: string
   headers: RemoteWorkspaceHeader[]
 }

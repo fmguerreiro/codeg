@@ -105,7 +105,6 @@ export function RemoteConnectionGate({ children }: { children: ReactNode }) {
           id: next.id,
           name: next.name,
           baseUrl: next.base_url,
-          token: next.token,
           windowInstanceId: remoteWindowId,
           onUnauthorized: () =>
             setState((prev) => ({ ...prev, expired: true })),

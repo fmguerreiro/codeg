@@ -30,7 +30,7 @@ function connection(
     id: 1,
     name: "prod-box",
     base_url: "https://prod.example",
-    token: "secret",
+    has_token: true,
     headers: [],
     sort_order: 0,
     created_at: "2026-08-25T00:00:00Z",
@@ -78,6 +78,13 @@ describe("RemoteWorkspaceManageDialog custom headers", () => {
     )
   })
 
+  it("never prefills the token, and says blank keeps the stored one", async () => {
+    await mount([connection()])
+    const token = screen.getByLabelText("Access token")
+    expect(token).toHaveValue("")
+    expect(token).toHaveAttribute("placeholder", "Leave blank to keep current")
+  })
+
   it("sends the added header on save and drops a removed one", async () => {
     const saved = connection({
       headers: [{ name: "X-Team", value: "core" }],
@@ -108,7 +115,7 @@ describe("RemoteWorkspaceManageDialog custom headers", () => {
       expect(mocks.updateRemoteWorkspaceConnection).toHaveBeenCalledWith(1, {
         name: "prod-box",
         baseUrl: "https://prod.example",
-        token: "secret",
+        token: "",
         headers: [{ name: "X-Team", value: "core" }],
       })
     })

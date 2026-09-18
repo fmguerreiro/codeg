@@ -1,3 +1,5 @@
+use crate::models::RemoteWorkspaceHeader;
+
 #[cfg(feature = "tauri-runtime")]
 const SERVICE_NAME: &str = "codeg";
 
@@ -9,27 +11,35 @@ fn channel_token_key(channel_id: i32) -> String {
     format!("chat-channel:{}", channel_id)
 }
 
+fn remote_workspace_token_key(connection_id: i32) -> String {
+    format!("remote-workspace-token:{}", connection_id)
+}
+
+fn remote_workspace_headers_key(connection_id: i32) -> String {
+    format!("remote-workspace-headers:{}", connection_id)
+}
+
 // ── Tauri mode: OS keyring ──
 
 #[cfg(feature = "tauri-runtime")]
-pub fn set_token(account_id: &str, token: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(SERVICE_NAME, &token_key(account_id))
-        .map_err(|e| format!("keyring init error: {e}"))?;
+fn set_secret(key: &str, value: &str) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new(SERVICE_NAME, key).map_err(|e| format!("keyring init error: {e}"))?;
     entry
-        .set_password(token)
+        .set_password(value)
         .map_err(|e| format!("keyring set error: {e}"))
 }
 
 #[cfg(feature = "tauri-runtime")]
-pub fn get_token(account_id: &str) -> Option<String> {
-    let entry = keyring::Entry::new(SERVICE_NAME, &token_key(account_id)).ok()?;
+fn get_secret(key: &str) -> Option<String> {
+    let entry = keyring::Entry::new(SERVICE_NAME, key).ok()?;
     entry.get_password().ok()
 }
 
 #[cfg(feature = "tauri-runtime")]
-pub fn delete_token(account_id: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(SERVICE_NAME, &token_key(account_id))
-        .map_err(|e| format!("keyring init error: {e}"))?;
+fn delete_secret(key: &str) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new(SERVICE_NAME, key).map_err(|e| format!("keyring init error: {e}"))?;
     match entry.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
@@ -161,70 +171,79 @@ fn write_tokens_at(
 }
 
 #[cfg(not(feature = "tauri-runtime"))]
+fn set_secret(key: &str, value: &str) -> Result<(), String> {
+    let mut tokens = read_tokens();
+    tokens.insert(key.to_string(), value.to_string());
+    write_tokens(&tokens)
+}
+
+#[cfg(not(feature = "tauri-runtime"))]
+fn get_secret(key: &str) -> Option<String> {
+    read_tokens().get(key).cloned()
+}
+
+#[cfg(not(feature = "tauri-runtime"))]
+fn delete_secret(key: &str) -> Result<(), String> {
+    let mut tokens = read_tokens();
+    tokens.remove(key);
+    write_tokens(&tokens)
+}
+
+// ── Stored secrets ──
+// One storage mechanism (keyring or file), one key prefix per kind of secret.
+
 pub fn set_token(account_id: &str, token: &str) -> Result<(), String> {
-    let mut tokens = read_tokens();
-    tokens.insert(token_key(account_id), token.to_string());
-    write_tokens(&tokens)
+    set_secret(&token_key(account_id), token)
 }
 
-#[cfg(not(feature = "tauri-runtime"))]
 pub fn get_token(account_id: &str) -> Option<String> {
-    read_tokens().get(&token_key(account_id)).cloned()
+    get_secret(&token_key(account_id))
 }
 
-#[cfg(not(feature = "tauri-runtime"))]
 pub fn delete_token(account_id: &str) -> Result<(), String> {
-    let mut tokens = read_tokens();
-    tokens.remove(&token_key(account_id));
-    write_tokens(&tokens)
+    delete_secret(&token_key(account_id))
 }
 
-// ── Chat channel token helpers ──
-// Reuse the same storage mechanism (keyring or file) with a different key prefix.
-
-#[cfg(feature = "tauri-runtime")]
 pub fn set_channel_token(channel_id: i32, token: &str) -> Result<(), String> {
-    let entry = keyring::Entry::new(SERVICE_NAME, &channel_token_key(channel_id))
-        .map_err(|e| format!("keyring init error: {e}"))?;
-    entry
-        .set_password(token)
-        .map_err(|e| format!("keyring set error: {e}"))
+    set_secret(&channel_token_key(channel_id), token)
 }
 
-#[cfg(feature = "tauri-runtime")]
 pub fn get_channel_token(channel_id: i32) -> Option<String> {
-    let entry = keyring::Entry::new(SERVICE_NAME, &channel_token_key(channel_id)).ok()?;
-    entry.get_password().ok()
+    get_secret(&channel_token_key(channel_id))
 }
 
-#[cfg(feature = "tauri-runtime")]
 pub fn delete_channel_token(channel_id: i32) -> Result<(), String> {
-    let entry = keyring::Entry::new(SERVICE_NAME, &channel_token_key(channel_id))
-        .map_err(|e| format!("keyring init error: {e}"))?;
-    match entry.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(format!("keyring delete error: {e}")),
-    }
+    delete_secret(&channel_token_key(channel_id))
 }
 
-#[cfg(not(feature = "tauri-runtime"))]
-pub fn set_channel_token(channel_id: i32, token: &str) -> Result<(), String> {
-    let mut tokens = read_tokens();
-    tokens.insert(channel_token_key(channel_id), token.to_string());
-    write_tokens(&tokens)
+pub fn set_remote_workspace_token(connection_id: i32, token: &str) -> Result<(), String> {
+    set_secret(&remote_workspace_token_key(connection_id), token)
 }
 
-#[cfg(not(feature = "tauri-runtime"))]
-pub fn get_channel_token(channel_id: i32) -> Option<String> {
-    read_tokens().get(&channel_token_key(channel_id)).cloned()
+pub fn get_remote_workspace_token(connection_id: i32) -> Option<String> {
+    get_secret(&remote_workspace_token_key(connection_id))
 }
 
-#[cfg(not(feature = "tauri-runtime"))]
-pub fn delete_channel_token(channel_id: i32) -> Result<(), String> {
-    let mut tokens = read_tokens();
-    tokens.remove(&channel_token_key(channel_id));
-    write_tokens(&tokens)
+/// Headers travel as JSON because the store only holds strings.
+pub fn set_remote_workspace_headers(
+    connection_id: i32,
+    headers: &[RemoteWorkspaceHeader],
+) -> Result<(), String> {
+    let encoded = serde_json::to_string(headers)
+        .map_err(|e| format!("failed to serialize remote workspace headers: {e}"))?;
+    set_secret(&remote_workspace_headers_key(connection_id), &encoded)
+}
+
+/// `None` is no stored entry, unlike a stored empty list: only the former lets
+/// a caller fall back to a not-yet-migrated column.
+pub fn get_remote_workspace_headers(connection_id: i32) -> Option<Vec<RemoteWorkspaceHeader>> {
+    let encoded = get_secret(&remote_workspace_headers_key(connection_id))?;
+    serde_json::from_str(&encoded).ok()
+}
+
+pub fn delete_remote_workspace_secrets(connection_id: i32) -> Result<(), String> {
+    delete_secret(&remote_workspace_token_key(connection_id))?;
+    delete_secret(&remote_workspace_headers_key(connection_id))
 }
 
 #[cfg(all(test, not(feature = "tauri-runtime")))]

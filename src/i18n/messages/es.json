@@ -4611,6 +4611,7 @@
     "name": "Name",
     "baseUrl": "Service URL",
     "token": "Access token",
+    "tokenPlaceholderKeep": "Dejar vacío para mantener actual",
     "customHeaders": "Encabezados personalizados",
     "customHeaderName": "Nombre del encabezado",
     "customHeaderValue": "Valor del encabezado",

@@ -4611,6 +4611,7 @@
     "name": "Nom",
     "baseUrl": "URL du service",
     "token": "Jeton d’accès",
+    "tokenPlaceholderKeep": "Laisser vide pour conserver l'actuel",
     "customHeaders": "En-têtes personnalisés",
     "customHeaderName": "Nom de l'en-tête",
     "customHeaderValue": "Valeur de l'en-tête",

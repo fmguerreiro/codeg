@@ -4623,6 +4623,7 @@
     "name": "Name",
     "baseUrl": "Service URL",
     "token": "Access token",
+    "tokenPlaceholderKeep": "Leave blank to keep current",
     "customHeaders": "Custom headers",
     "customHeaderName": "Header name",
     "customHeaderValue": "Header value",
