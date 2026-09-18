@@ -284,6 +284,7 @@
     "updateReadyHint": "Update downloaded — restart to apply.",
     "restarting": "Restarting...",
     "dockerUpgradeHint": "This upgrades the running container now. It's lost if the container is recreated — to keep it, pull or build an image at the new version and recreate.",
+    "containerUpgradeBlockedHint": "Upgrading in place is disabled here because it would be lost when the container is recreated — pull or build an image at the new version and recreate instead.",
     "upgradeRolledBack": "Upgrade failed; the server rolled back to the previous version.",
     "serverUnreachable": "Couldn't reach the server to start the upgrade. Check that it's running and try again.",
     "rollbackButton": "Roll back",

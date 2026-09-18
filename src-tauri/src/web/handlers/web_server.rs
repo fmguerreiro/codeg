@@ -130,6 +130,9 @@ pub struct AppUpdateCheckResult {
     /// unsupported rather than driving the new flow against the old blocking
     /// `perform_app_update`.
     pub live_progress: bool,
+    /// In a container without `CODEG_ALLOW_CONTAINER_UPGRADE=1`, so the
+    /// in-place apply will be refused; the frontend says so before the click.
+    pub container_upgrade_blocked: bool,
 }
 
 #[cfg(feature = "tauri-runtime")]
@@ -183,6 +186,7 @@ pub async fn check_app_update() -> Result<Json<AppUpdateCheckResult>, AppCommand
         restart_delay_ms: runtime::restart_delay_ms(),
         rollback_available: server_rollback_available(),
         live_progress: true,
+        container_upgrade_blocked: crate::update::runtime::container_upgrade_blocked(),
     }))
 }
 
@@ -207,6 +211,8 @@ pub struct ServerUpdateStatus {
     /// This server speaks the detached `app_update_state` protocol. See
     /// [`AppUpdateCheckResult::live_progress`].
     pub live_progress: bool,
+    /// See [`AppUpdateCheckResult::container_upgrade_blocked`].
+    pub container_upgrade_blocked: bool,
 }
 
 /// Local-only counterpart to [`check_app_update`]: reports what this process
@@ -226,5 +232,6 @@ pub async fn app_update_status() -> Json<ServerUpdateStatus> {
         restart_delay_ms: runtime::restart_delay_ms(),
         rollback_available: server_rollback_available(),
         live_progress: true,
+        container_upgrade_blocked: crate::update::runtime::container_upgrade_blocked(),
     })
 }

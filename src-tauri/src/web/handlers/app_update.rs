@@ -121,12 +121,26 @@ fn ensure_supported() -> Result<(), AppCommandError> {
     Ok(())
 }
 
+/// Refuse the swap inside a container, where it lands in the writable layer
+/// and vanishes on the next recreate. Only the apply is gated: checking,
+/// restarting and rollback stay available.
+#[cfg(not(feature = "tauri-runtime"))]
+fn ensure_container_upgrade_allowed() -> Result<(), AppCommandError> {
+    if crate::update::runtime::container_upgrade_blocked() {
+        return Err(AppCommandError::invalid_input(
+            "In-place upgrade is disabled in a container because it would be lost when the container is recreated: pull an image at the new version and recreate instead, or set CODEG_ALLOW_CONTAINER_UPGRADE=1 if this binary is on a mount that persists.",
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(not(feature = "tauri-runtime"))]
 async fn perform_impl(state: Arc<AppState>) -> Result<AppUpdateState, AppCommandError> {
     use crate::update::install::UpdatePhase;
     use crate::update::state as update_state;
 
     ensure_supported()?;
+    ensure_container_upgrade_allowed()?;
 
     // Perform-vs-perform mutual exclusion is the atomic `update_state` claim:
     // a second click or another client that finds a download already in flight
@@ -322,14 +336,46 @@ mod tests {
 
         // A second concurrent perform must return the live snapshot and attach —
         // never a `busy` error, and without driving a second download. `try_begin`
-        // short-circuits before the op-lock or any network is touched.
-        let result = perform_impl(state.clone())
-            .await
-            .expect("second perform attaches instead of erroring");
+        // short-circuits before the op-lock or any network is touched. The
+        // opt-in keeps this about attaching if the suite runs in a container.
+        let result = temp_env::async_with_vars(
+            [(
+                crate::update::runtime::ENV_ALLOW_CONTAINER_UPGRADE,
+                Some("1"),
+            )],
+            async { perform_impl(state.clone()).await },
+        )
+        .await
+        .expect("second perform attaches instead of erroring");
         assert_eq!(result.status, update_state::AppUpdateLifecycle::Downloading);
 
         // The op-lock was never taken on the attach path, so a follow-up restart
         // could still acquire it.
+        assert!(state.system_op_lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn perform_refuses_in_a_container_without_claiming_the_state() {
+        let db = crate::db::test_helpers::fresh_in_memory_db().await;
+        let dir = tempfile::tempdir().unwrap();
+        let state = Arc::new(AppState::new_for_test(db, dir.path().to_path_buf()));
+
+        let err = temp_env::async_with_vars(
+            [
+                (crate::update::runtime::ENV_RUNTIME, Some("docker")),
+                (crate::update::runtime::ENV_ALLOW_CONTAINER_UPGRADE, None),
+            ],
+            async { perform_impl(state.clone()).await.unwrap_err() },
+        )
+        .await;
+        assert!(err.message.contains("container is recreated"));
+
+        // The refusal has to land before the `Downloading` claim, or the UI
+        // would sit on a download that is never going to run.
+        assert_eq!(
+            update_state::snapshot(&state.update_state).status,
+            update_state::AppUpdateLifecycle::Idle
+        );
         assert!(state.system_op_lock.try_lock().is_ok());
     }
 

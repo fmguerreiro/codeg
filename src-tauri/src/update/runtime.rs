@@ -19,9 +19,11 @@ pub const ENV_SUPERVISED: &str = "CODEG_SUPERVISED";
 /// worker that exited with [`EXIT_RESTART`]. The worker reports the same
 /// value to the frontend so its countdown matches reality.
 pub const ENV_RESTART_DELAY_MS: &str = "CODEG_RESTART_DELAY_MS";
-/// Deployment marker baked into the Docker image (`docker`). Only used for
-/// user-facing messaging ("permanent across recreation needs a pull").
+/// Deployment marker baked into the Docker image (`docker`).
 pub const ENV_RUNTIME: &str = "CODEG_RUNTIME";
+/// Set to `1` to allow an in-place upgrade inside a container; only correct
+/// when the binary is on a mount that outlives it.
+pub const ENV_ALLOW_CONTAINER_UPGRADE: &str = "CODEG_ALLOW_CONTAINER_UPGRADE";
 
 /// Default relaunch delay when `CODEG_RESTART_DELAY_MS` is unset.
 pub const DEFAULT_RESTART_DELAY_MS: u64 = 2000;
@@ -86,6 +88,19 @@ pub fn runtime_label() -> &'static str {
     }
 }
 
+/// True when an in-place upgrade must be refused: inside a container the swap
+/// lands in the writable layer and is lost on the next recreate, unless
+/// [`ENV_ALLOW_CONTAINER_UPGRADE`] says the binary is on a mount that persists.
+pub fn container_upgrade_blocked() -> bool {
+    is_docker() && !container_upgrade_opt_in()
+}
+
+fn container_upgrade_opt_in() -> bool {
+    std::env::var(ENV_ALLOW_CONTAINER_UPGRADE)
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
 /// Relaunch delay in milliseconds, read from the environment with a sane
 /// default. Clamped to a minimum so the frontend countdown never lands on
 /// zero and starts polling before the process is even gone.
@@ -132,4 +147,40 @@ pub fn self_exe() -> PathBuf {
             })
         })
         .clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn container_upgrade_blocked_needs_a_container_without_the_opt_in() {
+        // The `/.dockerenv` leg of `is_docker` is only exercisable inside a
+        // container, so "not a container" only holds where it is absent.
+        temp_env::with_vars(
+            [
+                (ENV_RUNTIME, None::<&str>),
+                (ENV_ALLOW_CONTAINER_UPGRADE, None),
+            ],
+            || {
+                if !std::path::Path::new("/.dockerenv").exists() {
+                    assert!(!container_upgrade_blocked());
+                }
+            },
+        );
+        temp_env::with_vars(
+            [
+                (ENV_RUNTIME, Some("docker")),
+                (ENV_ALLOW_CONTAINER_UPGRADE, None),
+            ],
+            || assert!(container_upgrade_blocked()),
+        );
+        temp_env::with_vars(
+            [
+                (ENV_RUNTIME, Some("docker")),
+                (ENV_ALLOW_CONTAINER_UPGRADE, Some("1")),
+            ],
+            || assert!(!container_upgrade_blocked()),
+        );
+    }
 }

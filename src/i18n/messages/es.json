@@ -284,6 +284,7 @@
     "updateReadyHint": "Actualización descargada: reinicia para aplicarla.",
     "restarting": "Reiniciando...",
     "dockerUpgradeHint": "Esto actualiza el contenedor en ejecución ahora. Se pierde si se recrea el contenedor: para conservarlo, descarga o crea una imagen con la nueva versión y recrea el contenedor.",
+    "containerUpgradeBlockedHint": "Actualizar en el sitio está deshabilitado aquí porque se perdería al recrear el contenedor: descarga o crea una imagen con la nueva versión y recrea el contenedor.",
     "upgradeRolledBack": "La actualización falló; el servidor volvió a la versión anterior.",
     "serverUnreachable": "No se pudo conectar con el servidor para iniciar la actualización. Comprueba que esté en ejecución e inténtalo de nuevo.",
     "rollbackButton": "Revertir",
