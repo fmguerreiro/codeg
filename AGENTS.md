@@ -110,7 +110,7 @@ INSTA_UPDATE=auto cargo test --features test-utils     # 自动写新 .snap
 
 - **仅支持静态导出**：`next.config.ts` 设置 `output: "export"`，不支持动态路由（`[param]`），必须使用查询参数替代
 - **路径别名**：`@/*` 映射到 `./src/*`，导入写法为 `@/lib/utils`、`@/components/ui/button`
-- **服务器部署**：通过环境变量配置（`CODEG_PORT`、`CODEG_HOST`、`CODEG_TOKEN`、`CODEG_DATA_DIR`、`CODEG_STATIC_DIR`）
+- **服务器部署**：通过环境变量配置（`CODEG_PORT`、`CODEG_HOST`、`CODEG_TOKEN`、`CODEG_DATA_DIR`、`CODEG_STATIC_DIR`、`CODEG_TLS_CERT`、`CODEG_TLS_KEY`）。未设置 `CODEG_HOST` 时默认绑定 `127.0.0.1`（Docker 内为 `0.0.0.0`）；同时设置 `CODEG_TLS_CERT` 与 `CODEG_TLS_KEY`（PEM 路径）才启用 HTTPS，只设置其一会启动失败
 - **Docker 支持**：多阶段构建（Node.js + Rust），支持 `docker-compose` 一键部署
 
 ## 代码风格
