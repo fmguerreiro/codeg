@@ -382,6 +382,36 @@ pub(crate) async fn sync_imported_sessions(
     refreshed
 }
 
+/// The live row for an external session, if it is imported and not deleted.
+/// Shares [`agent_type_db_str`] with [`import_one`] so session discovery and
+/// import agree on how a session is keyed.
+pub(crate) async fn find_imported_row(
+    conn: &DatabaseConnection,
+    agent_type: &AgentType,
+    external_id: &str,
+) -> Result<Option<conversation::Model>, DbError> {
+    conversation::Entity::find()
+        .filter(conversation::Column::ExternalId.eq(external_id))
+        .filter(conversation::Column::AgentType.eq(agent_type_db_str(agent_type)))
+        .filter(conversation::Column::DeletedAt.is_null())
+        .one(conn)
+        .await
+        .map_err(DbError::from)
+}
+
+/// Import a session discovered running. [`DeletedPolicy::Skip`] keeps a
+/// conversation the user deleted deleted, however live the session behind it
+/// still is.
+pub(crate) async fn import_one_discovered(
+    conn: &DatabaseConnection,
+    folder_id: i32,
+    agent_type: &AgentType,
+    summary: &ConversationSummary,
+) -> Result<(), DbError> {
+    import_one(conn, folder_id, agent_type, summary, DeletedPolicy::Skip).await?;
+    Ok(())
+}
+
 /// Insert a brand-new conversation, or — when it already exists — refresh it in
 /// place from the freshly parsed session file (see [`refresh_existing`]). A
 /// soft-deleted row is restored first when `deleted` says so (see

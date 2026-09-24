@@ -22,6 +22,7 @@ pub mod chat_channel;
 pub mod commands;
 pub mod db;
 pub mod deep_link;
+pub mod discovery;
 pub mod folder_links;
 pub mod forge;
 pub mod git_credential;
@@ -1085,6 +1086,19 @@ mod tauri_app {
                     tauri::async_runtime::spawn(crate::office_watch::office_watch_idle_sweep_task(
                         idle_timeout,
                         std::time::Duration::from_secs(crate::office_watch::SWEEP_INTERVAL_SECS),
+                    ));
+                }
+
+                // Surface agent sessions started outside codeg (a terminal,
+                // another tool) as live conversations; mirrored in
+                // `bin/codeg_server.rs`. Disable with
+                // `CODEG_SESSION_DISCOVERY=off`.
+                if let Some(interval) = crate::discovery::interval_from_env() {
+                    tauri::async_runtime::spawn(crate::discovery::live_session_sweep_task(
+                        app.state::<crate::db::AppDatabase>().conn.clone(),
+                        crate::web::event_bridge::EventEmitter::Tauri(app.handle().clone()),
+                        app.state::<ConnectionManager>().clone_ref(),
+                        interval,
                     ));
                 }
 
