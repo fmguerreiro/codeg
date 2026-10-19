@@ -17,7 +17,8 @@
 //! rather than guessing from timestamps.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use walkdir::WalkDir;
 
 use serde::Deserialize;
 
@@ -90,38 +91,31 @@ fn is_embedded(entrypoint: Option<&str>) -> bool {
     entrypoint.is_some_and(|entrypoint| entrypoint.starts_with("sdk"))
 }
 
-/// Walks every project directory under pi's sessions root. There is no cheaper
-/// scoping: pi's directory names are a lossy encoding of the cwd, so they
-/// cannot be matched back to a folder path without opening the transcript.
+/// Walks pi's sessions root recursively. The default layout groups transcripts
+/// by project, while an absolute custom `sessionDir` can be flat.
 pub(crate) fn probe_pi_in(root: &Path) -> Vec<LiveSession> {
-    let Ok(projects) = fs::read_dir(root) else {
-        return Vec::new();
-    };
     let mut live = Vec::new();
-    for project in projects.flatten() {
-        let Ok(files) = fs::read_dir(project.path()) else {
+    for file in WalkDir::new(root).min_depth(1).into_iter().flatten() {
+        if !file.file_type().is_file() {
+            continue;
+        }
+        let Some(name) = file.file_name().to_str() else {
             continue;
         };
-        for file in files.flatten() {
-            let name = file.file_name();
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            let Some(session_file) = lock_target(name) else {
-                continue;
-            };
-            let Some(external_id) = pi_session_id(session_file) else {
-                continue;
-            };
-            if !lock_is_held(&file.path()) {
-                continue;
-            }
-            live.push(LiveSession {
-                agent_type: AgentType::Pi,
-                external_id,
-                cwd: None,
-            });
+        let Some(session_file) = lock_target(name) else {
+            continue;
+        };
+        let Some(external_id) = pi_session_id(session_file) else {
+            continue;
+        };
+        if !lock_is_held(file.path()) {
+            continue;
         }
+        live.push(LiveSession {
+            agent_type: AgentType::Pi,
+            external_id,
+            cwd: None,
+        });
     }
     live
 }
@@ -153,7 +147,14 @@ fn lock_is_held(path: &Path) -> bool {
         unsafe { libc::flock(fd, libc::LOCK_UN) };
         return false;
     }
-    true
+    flock_error_is_contention(&std::io::Error::last_os_error())
+}
+
+#[cfg(unix)]
+fn flock_error_is_contention(error: &std::io::Error) -> bool {
+    error
+        .raw_os_error()
+        .is_some_and(|errno| errno == libc::EAGAIN || errno == libc::EWOULDBLOCK)
 }
 
 #[cfg(not(unix))]
@@ -293,5 +294,39 @@ mod tests {
         assert_eq!(live.len(), 1, "a held lock is a running session");
         assert_eq!(live[0].external_id, "01a0d132");
         assert_eq!(live[0].agent_type, AgentType::Pi);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pi_reports_locks_in_a_flat_custom_session_directory() {
+        let root = tempdir().expect("tempdir");
+        let lock = root
+            .path()
+            .join(".2026-09-24T02-15-26-466Z_flat-session.jsonl.lock.os");
+        fs::write(&lock, "").expect("write");
+
+        use std::os::unix::io::AsRawFd;
+        let held = fs::File::open(&lock).expect("open");
+        assert_eq!(
+            unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+            0,
+            "test must be able to take the lock it is simulating",
+        );
+
+        let live = probe_pi_in(root.path());
+
+        assert_eq!(live.len(), 1);
+        assert_eq!(live[0].external_id, "flat-session");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_lock_contention_counts_as_a_live_pi_session() {
+        assert!(flock_error_is_contention(&std::io::Error::from_raw_os_error(
+            libc::EAGAIN,
+        )));
+        assert!(!flock_error_is_contention(&std::io::Error::from_raw_os_error(
+            libc::EINTR,
+        )));
     }
 }

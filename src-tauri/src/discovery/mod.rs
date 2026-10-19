@@ -1,15 +1,5 @@
 //! Surfacing agent sessions codeg did not spawn.
 //!
-//! codeg only ever knew two kinds of conversation: ones it launched over ACP
-//! and tracks live, and ones a user explicitly imported, which land as settled
-//! history. A session started from a terminal fell between them — invisible
-//! until someone ran an import, and even then never marked running.
-//!
-//! This sweep closes that gap. Each tick asks [`probe`] which external sessions
-//! are actually running, adopts the ones inside folders the workspace already
-//! knows, and marks them [`ConversationStatus::InProgress`] so they appear in
-//! every client exactly like a session codeg started itself.
-//!
 //! Two rules keep it from fighting the rest of the system:
 //!
 //! * A conversation held by a live ACP connection is never touched — the
@@ -113,17 +103,16 @@ async fn sweep(
         }
         conversation_service::update_status(conn, conversation_id, ConversationStatus::PendingReview)
             .await?;
+        adopted.remove(&conversation_id);
         crate::commands::conversations::emit_conversation_upsert(emitter, conn, conversation_id).await;
     }
 
     Ok(())
 }
 
-/// Adopted rows that are no longer running, dropped from the tracking set.
-fn settled(adopted: &mut HashSet<i32>, running: &HashSet<i32>) -> Vec<i32> {
-    let gone: Vec<i32> = adopted.difference(running).copied().collect();
-    adopted.retain(|conversation_id| !gone.contains(conversation_id));
-    gone
+/// Keeps failed status writes eligible for retry.
+fn settled(adopted: &HashSet<i32>, running: &HashSet<i32>) -> Vec<i32> {
+    adopted.difference(running).copied().collect()
 }
 
 /// Mark one running session's conversation as running, importing it first if
@@ -249,14 +238,14 @@ mod tests {
     }
 
     #[test]
-    fn only_rows_no_longer_running_settle() {
-        let mut adopted: HashSet<i32> = [1, 2, 3].into_iter().collect();
+    fn only_rows_no_longer_running_are_candidates_to_settle() {
+        let adopted: HashSet<i32> = [1, 2, 3].into_iter().collect();
         let running: HashSet<i32> = [2].into_iter().collect();
 
-        let mut gone = settled(&mut adopted, &running);
+        let mut gone = settled(&adopted, &running);
         gone.sort_unstable();
 
         assert_eq!(gone, vec![1, 3]);
-        assert_eq!(adopted, [2].into_iter().collect::<HashSet<i32>>());
+        assert_eq!(adopted, [1, 2, 3].into_iter().collect::<HashSet<i32>>());
     }
 }
