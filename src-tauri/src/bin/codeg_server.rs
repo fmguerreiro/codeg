@@ -513,6 +513,17 @@ async fn async_main() -> ExitCode {
         ));
     }
 
+    // Surface agent sessions started outside codeg (a terminal, another tool)
+    // as live conversations. Disable with `CODEG_SESSION_DISCOVERY=off`.
+    if let Some(interval) = codeg_lib::discovery::interval_from_env() {
+        tokio::spawn(codeg_lib::discovery::live_session_sweep_task(
+            state.db.conn.clone(),
+            state.emitter.clone(),
+            state.connection_manager.clone_ref(),
+            interval,
+        ));
+    }
+
     // Automation engine (mirrors lib.rs setup): manual + scheduled fires,
     // event-bus completion, reconcile, boot recovery. One per process.
     if let Some(engine) = codeg_lib::automation::build_engine(
